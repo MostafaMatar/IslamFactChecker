@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Browse and search verified Islamic fact checks with comprehensive scholarly analysis. Access our growing archive of authenticated Islamic claims and expert verifications.">
+    <meta name="keywords" content="Islamic fact check history, verified Islamic claims, hadith verifications archive, Quran fact checks, Islamic knowledge base, scholarly analysis">
+    <meta name="author" content="Islam Fact Checker">
+    <meta name="robots" content="index, follow">
+    <meta name="googlebot" content="index, follow">
+    <meta property="og:title" content="Islam Fact Checker - Browse Verified Islamic Claims">
+    <meta property="og:description" content="Explore our archive of verified Islamic claims with authentic sources and scholarly analysis. Search through fact-checked Islamic topics.">
+    <meta property="og:image" content="/static/icon.jpg">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@IslamFactCheck">
+    <meta name="theme-color" content="#2c3e50">
+    <title>Islam Fact Checker - Browse Verified Claims</title>
+
+    <!-- Schema.org markup for Google -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": "Islamic Fact Check History",
+      "description": "Archive of verified Islamic claims and fact checks with scholarly sources",
+      "publisher": {
+        "@type": "Organization",
+        "name": "Islam Fact Checker"
+      },
+      "about": {
+        "@type": "Thing",
+        "name": "Islamic fact verification"
+      }
+    }
+    </script>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="icon" type="image/jpeg" href="/static/icon.jpg">
+    <link rel="shortcut icon" type="image/jpeg" href="/static/icon.jpg">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="nav-container">
+                <a 
+                    href="/" 
+                    class="back-button" 
+                    aria-label="Return to fact checker home"
+                >
+                    <svg 
+                        width="20" 
+                        height="20" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        stroke-width="2" 
+                        stroke-linecap="round" 
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                    <span>Back to Fact Checker</span>
+                </a>
+            </div>
+            <div class="logo">
+                <img src="/static/icon.jpg" alt="Islam Fact Checker Logo" width="48" height="48">
+                <h1>Verified Claims Archive</h1>
+            </div>
+            <p class="tagline">Browse through our collection of fact-checked Islamic claims</p>
+            
+            <div class="search-bar">
+                <input 
+                    type="search" 
+                    id="searchClaims" 
+                    placeholder="Search verified claims..." 
+                    aria-label="Search verified claims"
+                >
+            </div>
+        </header>
+
+        <main>
+            <div class="trust-indicators">
+                <div class="indicator">
+                    <strong>Growing Archive</strong>
+                    <p>Continuously updated with new verifications</p>
+                </div>
+                <div class="indicator">
+                    <strong>Easy Access</strong>
+                    <p>Search and browse through verified claims</p>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <h2>Recent Verifications</h2>
+                <table class="claims-table">
+                    <thead>
+                        <tr>
+                            <th>Claim</th>
+                            <th>Classification</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="claimsTableBody">
+                        <!-- Claims will be inserted here -->
+                    </tbody>
+                </table>
+
+                <div class="pagination" id="pagination">
+                    <button class="page-button" id="prevPage" aria-label="Previous page">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M15 18l-6-6 6-6"/>
+                        </svg>
+                    </button>
+                    <span id="pageInfo">Page 1 of 1</span>
+                    <button class="page-button" id="nextPage" aria-label="Next page">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M9 18l6-6-6-6"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const tableBody = document.getElementById('claimsTableBody');
+            const prevButton = document.getElementById('prevPage');
+            const nextButton = document.getElementById('nextPage');
+            const pageInfo = document.getElementById('pageInfo');
+            
+            let currentPage = 1;
+            let totalPages = 1;
+
+            async function loadClaims(page) {
+                try {
+                    const response = await fetch(`/api/history?page=${page}`);
+                    const data = await response.json();
+                    
+                    // Update pagination info
+                    currentPage = data.pagination.current_page;
+                    totalPages = data.pagination.total_pages;
+                    pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+                    
+                    // Update buttons state
+                    prevButton.disabled = currentPage === 1;
+                    nextButton.disabled = currentPage === totalPages;
+
+                    // Clear and populate table
+                    tableBody.innerHTML = '';
+                    data.claims.forEach(claim => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td class="claim-text">${claim.query}</td>
+                            <td>
+                                <span class="classification-badge ${claim.classification.toLowerCase()}">
+                                    ${claim.classification}
+                                </span>
+                            </td>
+                            <td>
+                                <a href="/claim/${claim.id}/view" 
+                                   class="view-button"
+                                   aria-label="View details of claim">
+                                    View Details
+                                </a>
+                            </td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                } catch (error) {
+                    console.error('Error loading claims:', error);
+                }
+            }
+
+            // Event listeners for pagination
+            prevButton.onclick = () => {
+                if (currentPage > 1) {
+                    loadClaims(currentPage - 1);
+                }
+            };
+
+            nextButton.onclick = () => {
+                if (currentPage < totalPages) {
+                    loadClaims(currentPage + 1);
+                }
+            };
+
+            // Initialize search and pagination functionality
+            const searchInput = document.getElementById('searchClaims');
+            let allClaims = []; // Store all loaded claims
+            let filteredClaims = []; // Store filtered claims
+
+            // Debounce function for search
+            function debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            }
+
+            // Filter claims based on search input
+            const filterClaims = (searchTerm) => {
+                if (!searchTerm.trim()) {
+                    filteredClaims = allClaims;
+                    displayClaims(allClaims);
+                    updatePagination();
+                    return;
+                }
+
+                filteredClaims = allClaims.filter(claim => 
+                    claim.query.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+                displayClaims(filteredClaims);
+                updatePagination();
+            };
+
+            // Display claims in table
+            function displayClaims(claims) {
+                tableBody.innerHTML = '';
+                if (claims.length === 0) {
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 2rem;">
+                                No matching claims found.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                claims.forEach(claim => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="claim-text">${claim.query}</td>
+                        <td>
+                            <span class="classification-badge ${claim.classification.toLowerCase()}">
+                                ${claim.classification}
+                            </span>
+                        </td>
+                        <td>
+                            <a href="/claim/${claim.id}/view" 
+                               class="view-button"
+                               aria-label="View details of claim">
+                                View Details
+                            </a>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            const ITEMS_PER_PAGE = 10;
+
+            // Update pagination info
+            function updatePagination() {
+                const totalItems = filteredClaims.length;
+                const maxPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
+                currentPage = Math.min(currentPage, maxPages);
+                
+                pageInfo.textContent = `Page ${currentPage} of ${maxPages}`;
+                prevButton.disabled = currentPage === 1;
+                nextButton.disabled = currentPage === maxPages || totalItems === 0;
+
+                // Display only items for current page
+                const start = (currentPage - 1) * ITEMS_PER_PAGE;
+                const end = start + ITEMS_PER_PAGE;
+                const pageItems = filteredClaims.slice(start, end);
+                displayClaims(pageItems);
+            }
+
+            // Initialize search and navigation functionality
+            searchInput.addEventListener('input', debounce((e) => {
+                currentPage = 1;
+                filterClaims(e.target.value);
+            }, 300));
+
+            prevButton.onclick = () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    updatePagination();
+                }
+            };
+
+            nextButton.onclick = () => {
+                const maxPages = Math.ceil(filteredClaims.length / ITEMS_PER_PAGE);
+                if (currentPage < maxPages) {
+                    currentPage++;
+                    updatePagination();
+                }
+            };
+
+            // Modify loadClaims to store all claims
+            async function loadClaims(page) {
+                try {
+                    const loadingRow = document.createElement('tr');
+                    loadingRow.innerHTML = `
+                        <td colspan="3" style="text-align: center; padding: 2rem;">
+                            Loading claims...
+                        </td>
+                    `;
+                    tableBody.innerHTML = '';
+                    tableBody.appendChild(loadingRow);
+
+                    const response = await fetch(`/api/history?page=${page}`);
+                    const data = await response.json();
+                    
+                    // Store all claims
+                    allClaims = data.claims;
+                    filteredClaims = allClaims;
+                    
+                    // Display claims
+                    displayClaims(data.claims);
+                    updatePagination();
+                } catch (error) {
+                    console.error('Error loading claims:', error);
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 2rem; color: var(--error-color);">
+                                Error loading claims. Please try again later.
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+
+            // Initial load
+            loadClaims(1);
+        });
+    </script>
+</body>
+</html>

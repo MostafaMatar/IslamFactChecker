@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Instant, accurate Islamic fact-checking powered by AI. Verify claims about Islam using Quranic references, authentic hadiths, and renowned scholarly sources. Real-time analysis with detailed explanations.">
+    <meta name="keywords" content="Islam fact checker, Islamic verification, hadith authentication, Quran verification, Islamic scholar AI, Islamic knowledge base, Islamic fact verification">
+    <meta name="author" content="Islam Fact Checker">
+    <meta name="robots" content="index, follow">
+    <meta name="googlebot" content="index, follow">
+    <meta property="og:title" content="Islam Fact Checker - Real-time Islamic Claim Verification">
+    <meta property="og:description" content="Instant verification of Islamic claims with AI analysis, Quranic references, authentic hadiths, and scholarly sources.">
+    <meta property="og:image" content="/static/icon.jpg">
+    <meta property="og:url" content="https://islamfactchecker.com">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@IslamFactCheck">
+    <meta name="theme-color" content="#2c3e50">
+    <title>Islam Fact Checker - AI-Powered Islamic Claim Verification</title>
+
+    <!-- Schema.org markup for Google -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Islam Fact Checker",
+      "description": "AI-powered Islamic claim verification tool that uses Quranic references and scholarly sources",
+      "applicationCategory": "ReferenceApplication",
+      "operatingSystem": "Web browser",
+      "offers": {
+        "@type": "Offer",
+        "price": "0"
+      }
+    }
+    </script>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="icon" type="image/jpeg" href="/static/icon.jpg">
+    <link rel="shortcut icon" type="image/jpeg" href="/static/icon.jpg">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <img src="/static/icon.jpg" alt="Islam Fact Checker Logo" width="48" height="48">
+                <h1>Islam Fact Checker</h1>
+            </div>
+            <p class="tagline">
+                Verify claims made about Islam with authentic sources and scholarly analysis
+            </p>
+            <div class="nav-container">
+                <a 
+                    href="/history" 
+                    class="view-button"
+                    aria-label="View previous fact checks"
+                >
+                    <svg 
+                        width="16" 
+                        height="16" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span>View History</span>
+                </a>
+            </div>
+        </header>
+        <div class="trust-indicators">
+            <div class="indicator">
+                <strong>Authentic Sources</strong>
+                <p>Only verified Islamic texts and scholarly works</p>
+            </div>
+            <div class="indicator">
+                <strong>Real-time Analysis</strong>
+                <p>Get instant, accurate verification</p>
+            </div>
+            <div class="indicator">
+                <strong>Clear Results</strong>
+                <p>Easy to understand classifications and explanations</p>
+            </div>
+        </div>
+        <main>
+            <div class="chat-container">
+                <h2>Verify Islamic Claims</h2>
+                <div class="input-container">
+                    <label for="userInput" class="input-label">What would you like to verify?</label>
+                    <textarea 
+                        id="userInput" 
+                        placeholder="Example: Is music forbidden in Islam?" 
+                        rows="3"
+                        aria-label="Enter a claim to fact-check"
+                    ></textarea>
+                    <button 
+                        class="sendButton"
+                        id="sendButton" 
+                        type="button" 
+                        aria-label="Submit claim for fact checking"
+                    >
+                        <span class="button-icon">✓</span>
+                        Verify Claim
+                    </button>
+                </div>
+                <div class="messages" id="messages" role="log" aria-live="polite"></div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Islam Fact Checker uses AI to analyze claims. Always consult qualified scholars for religious guidance.</p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
