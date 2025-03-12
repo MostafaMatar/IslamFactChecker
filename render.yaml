@@ -9,10 +9,6 @@ services:
       - key: PYTHON_VERSION
         value: 3.9.12
       - key: DATABASE_PATH
-        value: /data/factcheck.db
+        value: /opt/render/project/src/app/factcheck.db
       - key: OPENROUTER_API_KEY
         sync: false
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1

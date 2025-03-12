@@ -47,8 +47,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database path - Use environment variable or default to app directory
-DB_PATH = os.getenv('DATABASE_PATH', os.path.join(os.path.dirname(__file__), 'factcheck.db'))
+# Database path configuration
+def get_db_path():
+    # First try the environment variable for production
+    db_path = os.getenv('DATABASE_PATH')
+    if db_path:
+        # If using /data directory in production
+        try:
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            # Test write permissions
+            with open(db_path, 'a'):
+                pass
+            return db_path
+        except PermissionError:
+            logger.warning(f"Permission denied for {db_path}, falling back to local directory")
+        except Exception as e:
+            logger.warning(f"Error with {db_path}: {str(e)}, falling back to local directory")
+    
+    # Fallback to local directory
+    local_path = os.path.join(os.path.dirname(__file__), 'factcheck.db')
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    return local_path
+
+# Set database path
+DB_PATH = get_db_path()
+logger.info(f"Using database path: {DB_PATH}")
 
 # Models
 class Query(BaseModel):
@@ -63,17 +86,20 @@ class Response(BaseModel):
 
 # Initialize database
 async def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS cache (
-                id TEXT PRIMARY KEY,
-                query TEXT UNIQUE,
-                response TEXT,
-                timestamp REAL
-            )
-        """)
-        await db.commit()
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS cache (
+                    id TEXT PRIMARY KEY,
+                    query TEXT UNIQUE,
+                    response TEXT,
+                    timestamp REAL
+                )
+            """)
+            await db.commit()
+    except Exception as e:
+        logger.error(f"Database initialization error: {str(e)}")
+        raise
 
 @app.on_event("startup")
 async def startup_event():
@@ -86,17 +112,15 @@ def get_static_file(filename: str) -> str:
 # Helper function to interact with OpenRouter API
 async def get_ai_response(query: str) -> dict:
     MAX_RETRIES = 3
-    INITIAL_RETRY_DELAY = 1  # seconds
+    INITIAL_RETRY_DELAY = 1
 
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-    logger.info("Starting API request...")
-    
     if not OPENROUTER_API_KEY:
         raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "HTTP-Referer": "http://localhost:8000",
+        "HTTP-Referer": os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000"),
         "X-Title": "Islam Fact Checker",
         "Content-Type": "application/json"
     }
@@ -139,17 +163,12 @@ async def get_ai_response(query: str) -> dict:
                 
             if content.startswith('\\boxed{'):
                 content = content[6:].strip()
-            try:
-                content = content.replace('\n', '').replace('    ', '')
-                parsed = ast.literal_eval(content)
-                if not all(key in parsed for key in ['answer', 'sources', 'classification']):
-                    raise ValueError("Missing required fields in response")
-                return parsed
-            except (ValueError, SyntaxError) as e:
-                logger.error("Failed to parse response: %s\nContent: %s", str(e), content)
-                if attempt == MAX_RETRIES - 1:
-                    raise HTTPException(status_code=500, detail=f"Failed to parse AI response: {str(e)}")
-                continue
+            
+            content = content.replace('\n', '').replace('    ', '')
+            parsed = ast.literal_eval(content)
+            if not all(key in parsed for key in ['answer', 'sources', 'classification']):
+                raise ValueError("Missing required fields in response")
+            return parsed
                 
         except Exception as e:
             logger.error(f"Attempt {attempt + 1} failed: {str(e)}")
@@ -161,7 +180,7 @@ async def get_ai_response(query: str) -> dict:
             retry_delay = INITIAL_RETRY_DELAY * (2 ** attempt)
             time.sleep(retry_delay)
 
-# SEO Routes
+# Routes
 @app.get("/robots.txt")
 async def get_robots(request: Request):
     base_url = str(request.base_url).rstrip('/')
