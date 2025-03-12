@@ -34,101 +34,9 @@ app = FastAPI(
     redoc_url="/api/redoc"
 )
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# SEO Routes
-@app.get("/robots.txt")
-async def get_robots(request: Request):
-    base_url = str(request.base_url).rstrip('/')
-    return PlainTextResponse(f"""User-agent: *
-Allow: /
-Allow: /history
-Allow: /claim/*/view
-
-Sitemap: {base_url}/sitemap.xml""")
-
-@app.get("/sitemap.xml")
-async def get_sitemap(request: Request):
-    # Get base URL from request
-    base_url = str(request.base_url).rstrip('/')
-    
-    # Base URLs that are always present
-    base_urls = [
-        {"loc": f"{base_url}/", "changefreq": "daily", "priority": "1.0"},
-        {"loc": f"{base_url}/history", "changefreq": "hourly", "priority": "0.8"}
-    ]
-    
-    try:
-        # Get all claim IDs from database
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute(
-                "SELECT id, timestamp FROM cache ORDER BY timestamp DESC LIMIT 1000"
-            ) as cursor:
-                claims = await cursor.fetchall()
-
-                # Add claim URLs to sitemap
-                claim_urls = [
-                    {
-                        "loc": f"{base_url}/claim/{claim[0]}/view",
-                        "lastmod": datetime.fromtimestamp(claim[1]).strftime("%Y-%m-%d"),
-                        "changefreq": "weekly",
-                        "priority": "0.6"
-                    }
-                    for claim in claims
-                ]
-
-                # Generate sitemap XML
-                sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n'
-                sitemap += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-                
-                # Add all URLs
-                for url in base_urls + claim_urls:
-                    sitemap += '  <url>\n'
-                    sitemap += f'    <loc>{url["loc"]}</loc>\n'
-                    if "lastmod" in url:
-                        sitemap += f'    <lastmod>{url["lastmod"]}</lastmod>\n'
-                    sitemap += f'    <changefreq>{url["changefreq"]}</changefreq>\n'
-                    sitemap += f'    <priority>{url["priority"]}</priority>\n'
-                    sitemap += '  </url>\n'
-                
-                sitemap += '</urlset>'
-                
-                return Response(content=sitemap, media_type="application/xml")
-    except Exception as e:
-        logger.error("Error generating sitemap: %s", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Serve HTML pages with caching headers
-@app.get("/")
-async def read_root():
-    return FileResponse(
-        "static/index.html",
-        headers={
-            "Cache-Control": "public, max-age=3600",
-            "X-Robots-Tag": "index, follow"
-        }
-    )
-
-@app.get("/claim/{claim_id}/view")
-async def read_claim_page(claim_id: str = Path(..., min_length=8, max_length=8)):
-    return FileResponse(
-        "static/claim.html",
-        headers={
-            "Cache-Control": "public, max-age=3600",
-            "X-Robots-Tag": "index, follow"
-        }
-    )
-
-@app.get("/history")
-async def get_history_page():
-    return FileResponse(
-        "static/history.html",
-        headers={
-            "Cache-Control": "public, max-age=3600",
-            "X-Robots-Tag": "index, follow"
-        }
-    )
+# Configure static files based on environment
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # CORS middleware
 app.add_middleware(
@@ -139,8 +47,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database path
-DB_PATH = "factcheck.db"
+# Database path - Use environment variable or default to app directory
+DB_PATH = os.getenv('DATABASE_PATH', os.path.join(os.path.dirname(__file__), 'factcheck.db'))
 
 # Models
 class Query(BaseModel):
@@ -155,6 +63,7 @@ class Response(BaseModel):
 
 # Initialize database
 async def init_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS cache (
@@ -170,15 +79,17 @@ async def init_db():
 async def startup_event():
     await init_db()
 
+# Helper function to get static file path
+def get_static_file(filename: str) -> str:
+    return os.path.join(STATIC_DIR, filename)
+
 # Helper function to interact with OpenRouter API
 async def get_ai_response(query: str) -> dict:
     MAX_RETRIES = 3
     INITIAL_RETRY_DELAY = 1  # seconds
 
-    # Get OpenRouter API key from environment variables
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
     logger.info("Starting API request...")
-    logger.info(f"API Key present: {bool(OPENROUTER_API_KEY)}")
     
     if not OPENROUTER_API_KEY:
         raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
@@ -189,9 +100,7 @@ async def get_ai_response(query: str) -> dict:
         "X-Title": "Islam Fact Checker",
         "Content-Type": "application/json"
     }
-    logger.info("Headers configured:", headers)
 
-    # Prompt template for fact-checking
     system_prompt = """You are a knowledgeable Islamic scholar and fact-checker. 
     Analyze the following claim about Islam, providing:
     1. Full context with relevant Quranic verses or hadiths
@@ -216,7 +125,6 @@ async def get_ai_response(query: str) -> dict:
                 ]
             }
             
-            logger.info(f"Sending request to OpenRouter API (attempt {attempt + 1}/{MAX_RETRIES})...")
             response = requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
@@ -225,23 +133,15 @@ async def get_ai_response(query: str) -> dict:
                 
             response.raise_for_status()
             result = response.json()
-            logger.info(result)
             
-            # If we get here, the request was successful
-            # Extract the content from the response
             content = result['choices'][0]['message']['content']
             logger.info("Response content: %s", content)
                 
-            # Remove LaTeX \boxed{} if present
             if content.startswith('\\boxed{'):
-                content = content[6:].strip()  # Remove \boxed{ and any whitespace
-            # Parse the content using ast.literal_eval which is more forgiving
+                content = content[6:].strip()
             try:
-                # Clean up the string to ensure it's a valid Python literal
                 content = content.replace('\n', '').replace('    ', '')
-                # Use literal_eval to parse the string into a Python dict
                 parsed = ast.literal_eval(content)
-                # Validate the response structure
                 if not all(key in parsed for key in ['answer', 'sources', 'classification']):
                     raise ValueError("Missing required fields in response")
                 return parsed
@@ -251,60 +151,103 @@ async def get_ai_response(query: str) -> dict:
                     raise HTTPException(status_code=500, detail=f"Failed to parse AI response: {str(e)}")
                 continue
                 
-        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        except Exception as e:
             logger.error(f"Attempt {attempt + 1} failed: {str(e)}")
-            if hasattr(e, 'response'):
-                logger.error(f"Error response: {e.response.text}")
-            
-            # If this was our last attempt, raise a specific error
             if attempt == MAX_RETRIES - 1:
                 raise HTTPException(
                     status_code=503,
-                    detail="Service temporarily unavailable. The AI service is not responding after multiple attempts. Please try again later."
+                    detail="Service temporarily unavailable. Please try again later."
                 )
-            
-            # Otherwise, wait with exponential backoff before retrying
-            retry_delay = INITIAL_RETRY_DELAY * (2 ** attempt)  # exponential backoff
-            logger.info(f"Waiting {retry_delay} seconds before retry...")
+            retry_delay = INITIAL_RETRY_DELAY * (2 ** attempt)
             time.sleep(retry_delay)
 
-@app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    logger.error("Unhandled exception: %s\n%s", str(exc), traceback.format_exc())
-    return JSONResponse(
-        status_code=500,
-        content={
-            "detail": str(exc),
-            "traceback": traceback.format_exc()
+# SEO Routes
+@app.get("/robots.txt")
+async def get_robots(request: Request):
+    base_url = str(request.base_url).rstrip('/')
+    return PlainTextResponse(f"""User-agent: *
+Allow: /
+Allow: /history
+Allow: /claim/*/view
+
+Sitemap: {base_url}/sitemap.xml""")
+
+@app.get("/sitemap.xml")
+async def get_sitemap(request: Request):
+    base_url = str(request.base_url).rstrip('/')
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT id, timestamp FROM cache ORDER BY timestamp DESC LIMIT 1000"
+            ) as cursor:
+                claims = await cursor.fetchall()
+                base_urls = [
+                    {"loc": f"{base_url}/", "changefreq": "daily", "priority": "1.0"},
+                    {"loc": f"{base_url}/history", "changefreq": "hourly", "priority": "0.8"}
+                ]
+                claim_urls = [
+                    {
+                        "loc": f"{base_url}/claim/{claim[0]}/view",
+                        "lastmod": datetime.fromtimestamp(claim[1]).strftime("%Y-%m-%d"),
+                        "changefreq": "weekly",
+                        "priority": "0.6"
+                    }
+                    for claim in claims
+                ]
+                sitemap = generate_sitemap(base_urls + claim_urls)
+                return Response(content=sitemap, media_type="application/xml")
+    except Exception as e:
+        logger.error("Error generating sitemap: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+def generate_sitemap(urls):
+    sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    sitemap += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    for url in urls:
+        sitemap += '  <url>\n'
+        sitemap += f'    <loc>{url["loc"]}</loc>\n'
+        if "lastmod" in url:
+            sitemap += f'    <lastmod>{url["lastmod"]}</lastmod>\n'
+        sitemap += f'    <changefreq>{url["changefreq"]}</changefreq>\n'
+        sitemap += f'    <priority>{url["priority"]}</priority>\n'
+        sitemap += '  </url>\n'
+    sitemap += '</urlset>'
+    return sitemap
+
+# Serve HTML pages with caching headers
+@app.get("/")
+async def read_root():
+    return FileResponse(
+        get_static_file("index.html"),
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "X-Robots-Tag": "index, follow"
         }
     )
 
-# Input validation models
-class ClaimId(BaseModel):
-    id: str = Field(
-        ..., 
-        min_length=8, 
-        max_length=8, 
-        pattern=r'^[a-zA-Z0-9]+$',
-        description="8-character alphanumeric claim ID"
+@app.get("/claim/{claim_id}/view")
+async def read_claim_page(claim_id: str = Path(..., min_length=8, max_length=8)):
+    return FileResponse(
+        get_static_file("claim.html"),
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "X-Robots-Tag": "index, follow"
+        }
     )
 
-class PaginationParams(BaseModel):
-    page: int = Field(1, ge=1, le=10, description="Page number (1-10)")
-    per_page: int = Field(10, ge=1, le=100, description="Items per page (1-100)")
-
-class QueryText(BaseModel):
-    text: str = Field(
-        ..., 
-        min_length=1, 
-        max_length=1000,
-        pattern=r'^[\w\s.,!?\'"-]+$'
+@app.get("/history")
+async def get_history_page():
+    return FileResponse(
+        get_static_file("history.html"),
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "X-Robots-Tag": "index, follow"
+        }
     )
 
 @app.get("/claim/{claim_id}")
 async def get_claim(claim_id: str = Path(..., min_length=8, max_length=8, pattern=r'^[a-zA-Z0-9]+$')):
     try:
-        # Validate claim ID format (already done by Pydantic)
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute(
                 "SELECT query, response FROM cache WHERE id = ?",
@@ -324,15 +267,10 @@ async def get_claim(claim_id: str = Path(..., min_length=8, max_length=8, patter
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/factcheck")
-async def factcheck(query: QueryText):
+async def factcheck(query: Query):
     try:
-        # Log sanitized input
-        logger.info("Received factcheck request: %s", query.text)
-        
-        # Remove any potential dangerous characters
         sanitized_text = query.text.strip()
         
-        # Check cache first
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute(
                 "SELECT id, response, timestamp FROM cache WHERE query = ?",
@@ -340,51 +278,41 @@ async def factcheck(query: QueryText):
             ) as cursor:
                 result = await cursor.fetchone()
                 
-                # If found in cache and less than 24 hours old
                 if result and (time.time() - result[2]) < 86400:
-                    logger.info("Returning cached response")
                     cached_response = json.loads(result[1])
-                    cached_response['id'] = result[0]  # Include the ID in response
+                    cached_response['id'] = result[0]
                     return cached_response
 
-        # Get response from AI
-        logger.info("Getting fresh response from AI")
         response = await get_ai_response(query.text)
         
-        # Cache the response
-        logger.info("Caching the response")
         async with aiosqlite.connect(DB_PATH) as db:
-            # Generate a unique ID for the claim (first 8 chars of sha256)
             claim_id = hashlib.sha256(query.text.encode()).hexdigest()[:8]
             
-            # Store with unique ID
             await db.execute(
                 "INSERT OR REPLACE INTO cache (id, query, response, timestamp) VALUES (?, ?, ?, ?)",
                 (claim_id, query.text, json.dumps(response), time.time())
             )
             await db.commit()
             
-            # Add the ID to response
             response['id'] = claim_id
             
         return response
 
     except Exception as e:
         logger.error("Error in factcheck: %s\n%s", str(e), traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
 @app.get("/api/history")
-async def get_history(params: PaginationParams = Depends()):
+async def get_history(params: Optional[dict] = None):
     try:
-        # Parameters are already validated by Pydantic
-        offset = (params.page - 1) * params.per_page
+        page = int(params.get('page', 1)) if params else 1
+        per_page = min(int(params.get('per_page', 10)) if params else 10, 100)
+        offset = (page - 1) * per_page
 
         async with aiosqlite.connect(DB_PATH) as db:
-            # Get total count
             async with db.execute("SELECT COUNT(*) FROM cache") as cursor:
                 total_items = (await cursor.fetchone())[0]
 
-            # Get paginated results
             async with db.execute(
                 """
                 SELECT id, query, response 
@@ -392,7 +320,7 @@ async def get_history(params: PaginationParams = Depends()):
                 ORDER BY timestamp DESC 
                 LIMIT ? OFFSET ?
                 """,
-                (params.per_page, offset)
+                (per_page, offset)
             ) as cursor:
                 results = await cursor.fetchall()
                 
@@ -408,13 +336,18 @@ async def get_history(params: PaginationParams = Depends()):
                 return {
                     "claims": claims,
                     "pagination": {
-                        "current_page": params.page,
-                        "per_page": params.per_page,
+                        "current_page": page,
+                        "per_page": per_page,
                         "total_items": total_items,
-                        "total_pages": max(1, (total_items + params.per_page - 1) // params.per_page)
+                        "total_pages": max(1, (total_items + per_page - 1) // per_page)
                     }
                 }
                 
     except Exception as e:
         logger.error("Error retrieving history: %s", str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
