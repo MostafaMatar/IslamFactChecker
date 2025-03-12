@@ -322,25 +322,40 @@ async def factcheck(query: Query):
         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
 @app.get("/api/history")
-async def get_history(params: Optional[dict] = None):
+async def get_history(
+    page: int = 1,
+    per_page: int = 10,
+    search: str = None
+):
     try:
-        page = int(params.get('page', 1)) if params else 1
-        per_page = min(int(params.get('per_page', 10)) if params else 10, 100)
+        # Validate and limit per_page
+        per_page = min(per_page, 100)
         offset = (page - 1) * per_page
 
         async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT COUNT(*) FROM cache") as cursor:
-                total_items = (await cursor.fetchone())[0]
-
-            async with db.execute(
-                """
+            # Build query based on search parameter
+            count_query = "SELECT COUNT(*) FROM cache"
+            data_query = """
                 SELECT id, query, response 
                 FROM cache 
-                ORDER BY timestamp DESC 
-                LIMIT ? OFFSET ?
-                """,
-                (per_page, offset)
-            ) as cursor:
+            """
+            
+            params = []
+            if search:
+                count_query += " WHERE query LIKE ?"
+                data_query += " WHERE query LIKE ?"
+                search_param = f"%{search}%"
+                params.append(search_param)
+            
+            data_query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+            params.extend([per_page, offset])
+            
+            # Get total count
+            async with db.execute(count_query, params[:1] if search else []) as cursor:
+                total_items = (await cursor.fetchone())[0]
+
+            # Get paginated data
+            async with db.execute(data_query, params) as cursor:
                 results = await cursor.fetchall()
                 
                 claims = []
